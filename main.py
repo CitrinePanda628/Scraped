@@ -8,7 +8,7 @@ session = requests.Session()
 
 data = []
 
-special_characters = r'^[^?;:!.,()]+'  
+special_characters = r'^[^?;:!.()]+'  
 
 def from_other(url_new):
     try:
@@ -89,4 +89,5 @@ while it_has_next_page:
 
 
 df = pd.DataFrame(data)
-print(df)
+df.to_csv('books_data.csv', index=False)
+
