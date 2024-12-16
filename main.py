@@ -17,13 +17,12 @@ def from_other(url_new):
         soup = BeautifulSoup(response.text, 'html.parser')
         stock = soup.find('th', string="Availability").find_next('td').text.strip()
         tax = soup.find('th', string="Tax").find_next('td').text.strip().replace('Â', '') 
-        review = soup.find('th', string="Number of reviews").find_next('td').text.strip().replace('Â', '') 
         category = soup.find('ul', class_="breadcrumb").find_all('li')[2].text.strip()
         amount = re.findall(r'\d+', stock)
-        return amount[0], tax, review, category
+        return amount[0], tax, category
     except Exception as e:
         print(f"Error fetching details for book: {e}")
-        return None, None, None, None
+        return None, None, None
 
 
 def scrape_book(book):
@@ -37,19 +36,18 @@ def scrape_book(book):
         stars = book.find('p', class_="star-rating")["class"][1]
         relative_url = book.h3.a['href']
 
-        amount, tax, review, category = from_other(relative_url)
+        amount, tax, category = from_other(relative_url)
 
-        if amount is None or tax is None or review is None or category is None:
+        if amount is None or tax is None or category is None:
             return None  
 
         rating = {"One": 1, "Two": 2, "Three": 3, "Four": 4, "Five": 5}.get(stars, 0)
 
         return {
             'Title': title or 'Unknown',
-            'Price': price,
+            'Price': f'{price} +{tax}',
             'Rating': rating,
-            'Amount + Tax': f'{amount}+{tax}',
-            'Reviews': review,
+            'Amount': amount,
             'Category': category
         }
 
