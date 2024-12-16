@@ -2,92 +2,91 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
+from concurrent.futures import ThreadPoolExecutor
 
-
-
-
-
+session = requests.Session()
 
 data = []
 
-special_characters = r'^[^?;:!.,()]+'
+special_characters = r'^[^?;:!.,()]+'  
 
 def from_other(url_new):
     try:
         book_url = f"https://books.toscrape.com/catalogue/{url_new}"
-        response = requests.get(book_url)
+        response = session.get(book_url)
         soup = BeautifulSoup(response.text, 'html.parser')
         stock = soup.find('th', string="Availability").find_next('td').text.strip()
         tax = soup.find('th', string="Tax").find_next('td').text.strip().replace('Â', '') 
         review = soup.find('th', string="Number of reviews").find_next('td').text.strip().replace('Â', '') 
-        category = soup.find('ul', class_="breadcrumb").find_next('li').find_next('li').find_next('li').text.strip()
-        print(book_url)
+        category = soup.find('ul', class_="breadcrumb").find_all('li')[2].text.strip()
         amount = re.findall(r'\d+', stock)
-        return amount[0] , tax , review , category
+        return amount[0], tax, review, category
     except Exception as e:
         print(f"Error fetching details for book: {e}")
         return None, None, None, None
 
+
+def scrape_book(book):
+    try:
+        a_tag = book.find('a', title=True)
+        title = None
+        if a_tag and 'title' in a_tag.attrs:
+            title = re.match(special_characters, a_tag['title']).group(0)
+
+        price = book.find('p', class_="price_color").text.strip().replace('Â', '')  
+        stars = book.find('p', class_="star-rating")["class"][1]
+        relative_url = book.h3.a['href']
+
+        amount, tax, review, category = from_other(relative_url)
+
+        if amount is None or tax is None or review is None or category is None:
+            return None  
+
+        rating = {"One": 1, "Two": 2, "Three": 3, "Four": 4, "Five": 5}.get(stars, 0)
+
+        return {
+            'Title': title or 'Unknown',
+            'Price': price,
+            'Rating': rating,
+            'Amount + Tax': f'{amount}+{tax}',
+            'Reviews': review,
+            'Category': category
+        }
+
+    except Exception as e:
+        print(f"Error processing book: {e}")
+        return None
+
+
+url = 'https://books.toscrape.com/catalogue/page-1.html'
+
+
 it_has_next_page = True
 
 
-new_url = "page-1.html"
-
 while it_has_next_page:
     try:
-        url = f"https://books.toscrape.com/catalogue/{new_url}"
-        response = requests.get(url)
-        response.raise_for_status()
+
+        response = session.get(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         books = soup.findAll("article", class_="product_pod")
         pages = soup.find('li', class_="next")
 
-        for book in books:
-            try:
-                a_tag = book.find('a', title=True)
-                title = None
-
-                if a_tag and 'title' in a_tag.attrs:
-                    title = re.match(special_characters, a_tag['title']).group(0)
-
-                price = book.find('p', class_="price_color").text.strip().replace('Â', '')  
-                stars = book.find('p', class_="star-rating")["class"][1]
-                relative_url = book.h3.a['href']
-
-                amount, tax, review, category = from_other(relative_url)
-
-                if amount is None or tax is None or review is None or category is None:
-                    continue
-                match stars:
-                    case "One":
-                        rating = 1
-                    case "Two":
-                        rating = 2  
-                    case "Three":
-                        rating = 3
-                    case "Four":
-                        rating = 4
-                    case "Five":
-                        rating = 5
-
-                data.append({
-                    'Title': title or 'Unknown',
-                    'Price': price,
-                    'Rating': rating,
-                    'Amount + Tax': f'{amount}+{tax}',
-                    'Reviews': review,
-                    'Category': category
-                })
-            except Exception as e:
-                print(f"Error processing book: {e}")
-
         if pages:
-            new_url = pages.find('a')['href']
+            next_page_url = pages.find('a')['href']
+            url = f'https://books.toscrape.com/catalogue/{next_page_url}' 
         else:
-            it_has_next_page = False
+            it_has_next_page = False  
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(scrape_book, books))
+
+        data.extend(filter(None, results))
+
     except Exception as e:
-        print(f"Error fetching page: {e}")
+        print(f"Error fetching the page: {e}")
         it_has_next_page = False
+
 
 df = pd.DataFrame(data)
 print(df)
