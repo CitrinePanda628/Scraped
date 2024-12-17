@@ -87,5 +87,6 @@ while it_has_next_page:
 
 
 df = pd.DataFrame(data)
-df.to_csv('books_data.csv', index=False)
+print(df)
+# df.to_csv('books_data.csv', index=False)
 
